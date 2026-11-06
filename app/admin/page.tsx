@@ -58,11 +58,6 @@ export default function AdminPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [updatingServiceId, setUpdatingServiceId] = useState<number | null>(
-    null
-  );
-  const [serviceMessage, setServiceMessage] = useState("");
-  const [serviceError, setServiceError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +91,14 @@ export default function AdminPage() {
         if (!cancelled) {
           setUsers(usersData.users ?? []);
           setProducts(productsData.products ?? []);
-          setServices(servicesData.services ?? []);
+          const uniqueServices = Array.from(
+            new Map(
+              (servicesData.services ?? []).map(
+                (service: Service) => [Number(service.service_id), service] as const
+              )
+            ).values()
+          ) as Service[];
+          setServices(uniqueServices);
         }
       } catch {
         if (!cancelled) {
@@ -124,108 +126,6 @@ export default function AdminPage() {
     } finally {
       router.replace("/login");
       router.refresh();
-    }
-  }
-
-  async function handleServiceStatusChange(
-    serviceId: number,
-    newStatus: string
-  ) {
-    const currentService = services.find(
-      (service) => Number(service.service_id) === Number(serviceId)
-    );
-
-    if (
-      !currentService ||
-      currentService.service_status === newStatus ||
-      updatingServiceId !== null
-    ) {
-      return;
-    }
-
-    const previousStatus = currentService.service_status;
-    const previousDiagnosis = currentService.diagnosis;
-    const previousResolution = currentService.resolution;
-
-    setUpdatingServiceId(serviceId);
-    setServiceMessage("");
-    setServiceError("");
-
-    // Optimistically update the controlled dropdown and status badge immediately.
-    setServices((currentServices) =>
-      currentServices.map((service) =>
-        Number(service.service_id) === Number(serviceId)
-          ? { ...service, service_status: newStatus }
-          : service
-      )
-    );
-
-    try {
-      const response = await fetch("/api/services", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-        body: JSON.stringify({
-          service_id: Number(serviceId),
-          service_status: newStatus,
-        }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (response.status === 401) {
-        router.replace("/login");
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          data?.error || `Could not update status (HTTP ${response.status}).`
-        );
-      }
-
-      // Keep the selected value in the UI. Do not immediately overwrite it
-      // with a second GET request, which could return stale data.
-      setServices((currentServices) =>
-        currentServices.map((service) =>
-          Number(service.service_id) === Number(serviceId)
-            ? {
-                ...service,
-                service_status: newStatus,
-                diagnosis: data?.service?.diagnosis ?? service.diagnosis,
-                resolution: data?.service?.resolution ?? service.resolution,
-              }
-            : service
-        )
-      );
-
-      setServiceMessage(
-        `Service #${serviceId} status changed to ${newStatus.replaceAll("_", " ")}.`
-      );
-    } catch (err) {
-      // Revert the UI if the server reports a failure.
-      setServices((currentServices) =>
-        currentServices.map((service) =>
-          Number(service.service_id) === Number(serviceId)
-            ? {
-                ...service,
-                service_status: previousStatus,
-                diagnosis: previousDiagnosis,
-                resolution: previousResolution,
-              }
-            : service
-        )
-      );
-
-      setServiceError(
-        err instanceof Error
-          ? err.message
-          : "An unexpected error occurred while updating the status."
-      );
-    } finally {
-      setUpdatingServiceId(null);
     }
   }
 
@@ -483,24 +383,6 @@ export default function AdminPage() {
             </span>
           </div>
 
-          {serviceMessage && (
-            <p
-              role="status"
-              className="border-b border-emerald-900 bg-emerald-950/30 px-6 py-3 text-sm text-emerald-300"
-            >
-              {serviceMessage}
-            </p>
-          )}
-
-          {serviceError && (
-            <p
-              role="alert"
-              className="border-b border-red-900 bg-red-950/30 px-6 py-3 text-sm text-red-300"
-            >
-              {serviceError}
-            </p>
-          )}
-
           {loading ? (
             <p className="p-6 text-slate-400">Loading service requests...</p>
           ) : services.length === 0 ? (
@@ -560,52 +442,13 @@ export default function AdminPage() {
                         {service.technician_name ?? "Not assigned"}
                       </td>
                       <td className="min-w-44 px-6 py-4">
-                        <div className="space-y-2">
-                          <select
-                            aria-label={`Status for service request ${service.service_id}`}
-                            value={service.service_status}
-                            disabled={updatingServiceId !== null}
-                            onChange={(event) =>
-                              handleServiceStatusChange(
-                                Number(service.service_id),
-                                event.target.value
-                              )
-                            }
-                            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {!SERVICE_STATUSES.some(
-                              (option) =>
-                                option.value === service.service_status
-                            ) && (
-                              <option value={service.service_status}>
-                                {service.service_status.replaceAll("_", " ")}
-                              </option>
-                            )}
-
-                            {SERVICE_STATUSES.map((option) => (
-                              <option
-                                key={option.value}
-                                value={option.value}
-                              >
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-
-                          <span
-                            className={`inline-block whitespace-nowrap rounded-full border px-3 py-1 text-xs capitalize ${statusStyle(service.service_status)}`}
-                          >
-                            {SERVICE_STATUSES.find(
-                              (option) =>
-                                option.value === service.service_status
-                            )?.label ??
-                              service.service_status.replaceAll("_", " ")}
-                          </span>
-
-                          {updatingServiceId === service.service_id && (
-                            <p className="text-xs text-cyan-300">Saving...</p>
-                          )}
-                        </div>
+                        <span
+                          className={`inline-block whitespace-nowrap rounded-full border px-3 py-1 text-xs capitalize ${statusStyle(service.service_status)}`}
+                        >
+                          {SERVICE_STATUSES.find(
+                            (option) => option.value === service.service_status
+                          )?.label ?? service.service_status.replaceAll("_", " ")}
+                        </span>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
                         {money(service.service_cost)}

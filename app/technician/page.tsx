@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import ServiceNotes from "../admin/service-notes";
 
 type Service = {
   service_id: number;
@@ -73,7 +74,10 @@ export default function TechnicianPage() {
       }
 
       const rows: Service[] = data.services ?? [];
-      setServices(rows);
+      const uniqueRows = Array.from(
+        new Map(rows.map((service) => [Number(service.service_id), service] as const)).values()
+      ) as Service[];
+      setServices(uniqueRows);
 
       setDrafts((current) => {
         const next = { ...current };
@@ -527,6 +531,23 @@ export default function TechnicianPage() {
               })}
             </div>
           )}
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Service Activity Notes</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Shared notes for the services assigned to your technician account.
+            </p>
+          </div>
+
+          <ServiceNotes
+            services={services.map((service) => ({
+              service_id: service.service_id,
+              product_name: service.product_name,
+              serial_number: service.serial_number,
+            }))}
+          />
         </section>
 
         <p className="text-xs text-slate-500">

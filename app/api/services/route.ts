@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await pool.query(`
-      SELECT
+      SELECT DISTINCT ON (sr.service_id)
         sr.service_id,
         sr.reported_date,
         sr.issue_description,
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         ON technician.technician_id = sr.technician_id
       LEFT JOIN app_users technician_user
         ON technician_user.user_id = technician.user_id
-      ORDER BY sr.reported_date DESC, sr.service_id DESC
+      ORDER BY sr.service_id, sr.reported_date DESC, sr.service_id DESC
     `);
 
     return NextResponse.json({
@@ -82,7 +82,7 @@ export async function PATCH(request: NextRequest) {
     return unauthorizedResponse();
   }
 
-  if (session.role !== "admin") {
+  if (session.role !== "technician") {
     return forbiddenResponse();
   }
 
@@ -170,23 +170,29 @@ export async function PATCH(request: NextRequest) {
   try {
     const result = await pool.query(
       `
-        UPDATE service_records
+        UPDATE service_records sr
         SET
           service_status = $1,
           diagnosis = CASE
             WHEN $2::boolean THEN $3::text
-            ELSE diagnosis
+            ELSE sr.diagnosis
           END,
           resolution = CASE
             WHEN $4::boolean THEN $5::text
-            ELSE resolution
+            ELSE sr.resolution
           END
-        WHERE service_id = $6
+        WHERE sr.service_id = $6
+          AND EXISTS (
+            SELECT 1
+            FROM technicians t
+            WHERE t.technician_id = sr.technician_id
+              AND t.user_id = $7
+          )
         RETURNING
-          service_id,
-          service_status,
-          diagnosis,
-          resolution
+          sr.service_id,
+          sr.service_status,
+          sr.diagnosis,
+          sr.resolution
       `,
       [
         status,
@@ -195,6 +201,7 @@ export async function PATCH(request: NextRequest) {
         body.resolution !== undefined,
         body.resolution ?? null,
         serviceId,
+        session.userId,
       ]
     );
 

@@ -21,7 +21,12 @@ export default function ServiceNotes({ services }: { services: ServiceOption[] }
       const response = await fetch("/api/service-notes", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not read MongoDB notes.");
-      setNotes(data.notes ?? []);
+
+      const dedupedNotes = Array.from(
+        new Map((data.notes ?? []).map((note: Note) => [note._id, note] as const)).values()
+      ) as Note[];
+
+      setNotes(dedupedNotes);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "MongoDB is unavailable.");

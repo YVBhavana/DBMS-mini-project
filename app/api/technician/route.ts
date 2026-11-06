@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await pool.query(
-      `SELECT
+      `SELECT DISTINCT ON (sr.service_id)
           sr.service_id,
           sr.service_status,
           sr.issue_description,
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
        JOIN technicians t
          ON t.technician_id = sr.technician_id
        WHERE t.user_id = $1
-       ORDER BY sr.reported_date DESC`,
+       ORDER BY sr.service_id, sr.reported_date DESC`,
       [session.userId]
     );
 
